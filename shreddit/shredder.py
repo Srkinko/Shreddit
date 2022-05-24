@@ -18,12 +18,13 @@ class Shredder(object):
     """This class stores state for configuration, API objects, logging, etc. It exposes a shred() method that
     application code can call to start it.
     """
+
     def __init__(self, config, user):
         logging.basicConfig()
         self._logger = logging.getLogger("shreddit")
         self._logger.setLevel(level=logging.DEBUG if config.get("verbose", True) else logging.INFO)
         self.__dict__.update({"_{}".format(k): config[k] for k in config})
-        
+
         self._user = user
         self._connect()
 
@@ -49,7 +50,6 @@ class Shredder(object):
             multireddit = self._r.multireddit(username, multiname)
             for subreddit in multireddit.subreddits:
                 self._blacklist.add(str(subreddit).lower())
-
 
         self._logger.info("Deleting ALL items before {}".format(self._nuke_cutoff))
         self._logger.info("Deleting items not whitelisted until {}".format(self._recent_cutoff))
@@ -149,26 +149,36 @@ class Shredder(object):
         self._logger.info("Done. Starting on batch of {} items...".format(len(to_delete)))
         count, count_removed = 0, 0
         for item in to_delete:
-            count += 1
-            self._logger.debug("Examining item {}: {}".format(count, item))
-            created = arrow.get(item.created_utc)
-            if str(item.subreddit).lower() in self._blacklist:
-                self._logger.debug("Deleting due to blacklist")
-                count_removed += 1
-                self._remove(item)
-            elif created <= self._nuke_cutoff:
-                self._logger.debug("Item occurs prior to nuke cutoff")
-                count_removed += 1
-                self._remove(item)
-            elif self._check_whitelist(item):
-                self._logger.debug("Skipping due to: whitelisted")
-                continue
-            elif created > self._recent_cutoff:
-                self._logger.debug("Skipping due to: too recent")
-                continue
-            else:
-                count_removed += 1
-                self._remove(item)
+            try:
+                count += 1
+                self._logger.debug("Examining item {}: {}".format(count, item))
+                created = arrow.get(item.created_utc)
+                if str(item.subreddit).lower() in self._blacklist:
+                    self._logger.debug("Deleting due to blacklist")
+                    count_removed += 1
+                    self._remove(item)
+                elif created <= self._nuke_cutoff:
+                    self._logger.debug("Item occurs prior to nuke cutoff")
+                    count_removed += 1
+                    self._remove(item)
+                elif self._check_whitelist(item):
+                    self._logger.debug("Skipping due to: whitelisted")
+                    continue
+                elif created > self._recent_cutoff:
+                    self._logger.debug("Skipping due to: too recent")
+                    continue
+                else:
+                    count_removed += 1
+                    self._remove(item)
+            except Exception as e:
+                if('RATELIMIT' in e.message):
+                    self._logger.debug("Reddit API rate limit hit!")
+                    self._logger.debug("Sleeping for 5 seconds...")
+                    time.sleep(5)
+                else:
+                    self._logger.debug("Unhandled Exception occurred while processing this item, exiting")
+                    return -1
+
         return count_removed
 
     def _build_iterator(self):
