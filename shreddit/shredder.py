@@ -149,6 +149,7 @@ class Shredder(object):
         self._logger.info("Done. Starting on batch of {} items...".format(len(to_delete)))
         count, count_removed = 0, 0
         for item in to_delete:
+            self._logger.debug("Testing fix v0.1")
             try:
                 count += 1
                 self._logger.debug("Examining item {}: {}".format(count, item))
